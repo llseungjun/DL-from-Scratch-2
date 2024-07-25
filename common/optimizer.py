@@ -8,6 +8,7 @@ import numpy as np
     [ ]Nesterov 
     [ ]AdaGrad 
     [ ]RMSprop
+    여기 있는 class 들은 기본적으로 구현 가능해야함
 """
 class SGD:
     def __init__(self,lr=0.01) -> None:
