@@ -25,15 +25,15 @@ def softmax(x):
         sum_exp_x = np.sum(exp_x)
         return exp_x / sum_exp_x
     
-    def cross_entropy_error(y,t):
-        if y.ndim == 1: # batch_size == 1
-            y = y.reshape(1,y.size)
-            t = t.reshape(1,t.size)
+def cross_entropy_error(y,t):
+    if y.ndim == 1: # batch_size == 1
+        y = y.reshape(1,y.size)
+        t = t.reshape(1,t.size)
 
-        # t가 원 핫 벡터일 경우
-        if t.size == y.size:
-            t = t.argmax(axis = 1)
-        
-        batch_size = y.shape[0]
+    # t가 원 핫 벡터일 경우
+    if t.size == y.size:
+        t = t.argmax(axis = 1)
+    
+    batch_size = y.shape[0]
 
-        return -np.sum(np.log(y[np.arange(batch_size),t]+ 1e-7)) / batch_size
+    return -np.sum(np.log(y[np.arange(batch_size),t]+ 1e-7)) / batch_size

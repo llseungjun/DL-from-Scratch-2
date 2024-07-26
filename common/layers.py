@@ -11,6 +11,7 @@ from common.functions import softmax, sigmoid, cross_entropy_error
     [ ]SigmoidWithLoss 
     [ ]Dropout 
     [ ]Embedding
+    [ ]SoftmaxWithLoss backpward 함수 직접 구현
     여기 있는 class 들은 기본적으로 구현 가능해야함
 """
 
@@ -90,7 +91,7 @@ class Affine:
         self.grads[1][...] = db
         return dx
 
-class softmax:
+class Softmax:
     def __init__(self) -> None:
         self.params, self.grads = [], []
         self.out = None

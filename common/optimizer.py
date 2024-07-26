@@ -14,9 +14,9 @@ class SGD:
     def __init__(self,lr=0.01) -> None:
         self.lr = lr
 
-    def update(self, params, grads):
-        for key in params.keys():
-            params[key] -= self.lr * grads[key]
+    def update(self, params: list, grads: list):
+        for i,param in enumerate(params):
+            params[i] -= self.lr * grads[i]
 
 class Momentum:
     def __init__(self, lr=0.01, momentum=0.9) -> None:
