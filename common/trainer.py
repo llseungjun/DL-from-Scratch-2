@@ -5,7 +5,7 @@ sys.path.append('..')
 import numpy
 import time
 import matplotlib.pyplot as plt
-# from common.util import clip_grads
+from common.util import clip_grads
 
 class Trainer:
     def __init__(self, model, optimizer):
@@ -108,8 +108,8 @@ class RnnlmTrainer:
                 loss = model.forward(batch_x, batch_t)
                 model.backward()
                 params, grads = remove_duplicate(model.params, model.grads)  # 공유된 가중치를 하나로 모음
-                # if max_grad is not None:
-                #     clip_grads(grads, max_grad)
+                if max_grad is not None:
+                    clip_grads(grads, max_grad)
                 optimizer.update(params, grads)
                 total_loss += loss
                 loss_count += 1
