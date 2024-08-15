@@ -1,4 +1,5 @@
 import numpy as np
+import sys
 
 def preprocess(text):
     text = text.lower()
@@ -181,3 +182,36 @@ def clip_grads(grads, max_norm):
     if rate < 1: # max_norm 보다 total_norm이 클 경우(기울기 폭발이 의심될 경우)
         for grad in grads:
             grad *= rate # 모든 grad에 rate만큼의 기울기를 감소시켜줌
+
+
+def eval_perplexity(model, corpus, batch_size=10, time_size=35):
+    """perplexity : https://rfriend.tistory.com/851
+    """
+    print('퍼플렉서티 평가 중 ...')
+    corpus_size = len(corpus)
+    total_loss, loss_cnt = 0, 0
+    max_iters = (corpus_size - 1) // (batch_size * time_size)
+    jump = (corpus_size - 1) // batch_size # data size 300, batch size 2, time 10으로 예시를 들고 생각해보면 쉽게 이해됨
+
+    for iters in range(max_iters):
+        xs = np.zeros((batch_size, time_size), dtype=np.int32)
+        ts = np.zeros((batch_size, time_size), dtype=np.int32)
+        time_offset = iters * time_size
+        offsets = [time_offset + (i * jump) for i in range(batch_size)]
+        for t in range(time_size):
+            for i, offset in enumerate(offsets):
+                xs[i, t] = corpus[(offset + t) % corpus_size]
+                ts[i, t] = corpus[(offset + t + 1) % corpus_size]
+
+        try:
+            loss = model.forward(xs, ts, train_flg=False)
+        except TypeError:
+            loss = model.forward(xs, ts)
+        total_loss += loss
+
+        sys.stdout.write('\r%d / %d' % (iters, max_iters))
+        sys.stdout.flush()
+
+    print('')
+    ppl = np.exp(total_loss / max_iters)
+    return ppl

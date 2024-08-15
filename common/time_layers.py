@@ -274,3 +274,163 @@ class TimeRNN:
         self.layers = None
         self.h, self.c = None, None
         self.dh = None
+
+class LSTM:
+    def __init__(self, Wx, Wh, b) -> None:
+        self.params = [Wx, Wh, b]
+        self.grads = [np.zeros_like(Wx), np.zeros_like(Wh), np.zeros_like(b)]
+        self.cache = None
+    
+    def forward(self, x, h_prev, c_prev):
+        Wx, Wh, b = self.params
+        N, H = h_prev.shape
+
+        # affine 계산을 우선적으로 처리 후 A에 저장
+        A = np.matmul(x,Wx) + np.matmul(h_prev,Wh) + b
+
+        # A를 H씩 분해
+        f = A[:,:H]
+        g = A[:,H:H*2]
+        i = A[:,H*2:H*3]
+        o = A[:,H*3:]
+
+        # 각 성분에 해당하는 함수 통과
+        f = sigmoid(f)
+        g = np.tanh(g)
+        i = sigmoid(i)
+        o = sigmoid(o)
+
+        c_next = c_prev * f + g * i
+        h_next = o * np.tanh(c_next)
+
+        self.cache = (x, h_prev, c_prev, c_next, f, g, i, o)
+
+        return h_next, c_next
+
+    def backward(self, dh_next, dc_next):
+        x, h_prev, c_prev, c_next, f, g, i, o = self.cache
+        Wx, Wh, b = self.params
+
+        tanh_c_next = np.tanh(c_next)
+
+        ds = dc_next + (dh_next*o)*(1-tanh_c_next**2)
+
+        dc_prev = ds*f
+
+        df = ds*c_prev
+        dg = ds*i
+        di = ds*g
+        do = dh_next*tanh_c_next
+
+        df *= f*(1-f)
+        dg *= (1-g**2)
+        di *= i*(1-i)
+        do *= o*(1-o)
+
+        dA = np.hstack((df,dg,di,do))
+
+        dWx = np.matmul(h_prev.T, dA) 
+        dWh = np.matmul(x.T,dA)
+        db = np.sum(dA, axis=0)
+
+        self.grads[0][...] = dWx
+        self.grads[1][...] = dWh
+        self.grads[2][...] = db
+        
+        dx = np.matmul(dA, Wx.T)
+        dh_prev = np.matmul(dA,Wh.T)
+
+        return dx, dh_prev, dc_prev
+
+class TimeLSTM:
+    def __init__(self, Wx, Wh, b, stateful=False) -> None:
+        self.params = [Wx, Wh, b]
+        self.grads = [np.zeros_like(Wx), np.zeros_like(Wh), np.zeros_like(b)]
+        self.layers = None
+        self.h, self.c = None, None # 다음 미니 배치 때 전달할 h,c 
+        self.dh = None # seq2seq를 위한 구현
+
+    def forward(self, xs):
+        """_summary_
+
+        Args:
+            xs: T개의 시점에 해당하는 미니배치 임베딩 행렬
+
+        Returns:
+            hs: 각 시점에서의 hidden state 행렬
+        """
+        Wx, Wh, b = self.params
+        N, T, D = xs.shape # hs 초기화를 위한 변수
+        H = Wh.shape[0] # hs, self.h 초기화를 위한 변수
+
+        self.layers = []
+        hs = np.empty((N,T,H),dtype='f')
+
+        if not self.stateful or self.h == None: # self.h 영행렬로 초기화
+            self.h = np.zeros((N,H),dtype='f')
+        if not self.stateful or self.c == None:
+            self.c = np.zeros((H,H), dtype='f')
+
+        # LSTM block 쌓기
+        for t in range(T):
+            layer = LSTM(*self.params)
+            self.h, self.c = layer.forward(xs[:,t,:],self.h, self.c)
+            hs[:,t,:] = self.h
+            self.layers.append(layer)
+        
+        return hs
+
+    def backward(self, dhs):
+        Wx, Wh, b = self.params
+        N,T,H = dhs.shape
+        D = Wx.shape[0]
+
+        dxs = np.empty((N,T,D),dtype='f')
+        # dh, dc 초기화
+        # 처음에는 전달 받을 dh와 dc가 없기 때문에 0으로 초기화
+        dh, dc = 0 
+
+        # 모든 시점의 LSTM layer의 기울기 누적합을 위한 변수
+        grads = [0,0,0]
+
+        # LSTM block 역순으로 backward
+        for t in reversed(range(T)):
+            layer = self.layers[t]
+            dx, dh, dc = layer.backward(dhs[:,t,:] + dh, dc) # 계산 그래프 상 dh가 2개로 분기하기 때문에 dh를 더해줌
+            dxs[:,t,:] = dx
+            for i, grad in enumerate(layer.grad):
+                grads[i] += grad
+
+        # TimeLSTM 기울기 업데이트
+        for i, grad in enumerate(grads):
+            self.grads[i][...] = grad
+
+        self.dh = dh # 제일 앞단의 dh 저장, seq2seq 디코더 구현 시 필요
+
+        return dxs
+
+    def set_state(self, h, c = None):
+        self.h, self.c  = h, c
+
+    def reset_state(self):
+        self.h, self.c = None, None
+
+class TimeDropout:
+    def __init__(self, dropout_ratio=0.5):
+        self.params, self.grads = [], []
+        self.dropout_ratio = dropout_ratio
+        self.mask = None
+        self.train_flg = True
+
+    def forward(self, xs):
+        if self.train_flg:
+            flg = np.random.rand(*xs.shape) > self.dropout_ratio # flg는 T,F로 구성된 xs와 같은 shape의 배열
+            scale = 1 / (1.0 - self.dropout_ratio) 
+            self.mask = flg.astype(np.float32) * scale # flg를 0 or 1로 변환하고 스케일링 적용
+
+            return xs * self.mask
+        else:
+            return xs
+
+    def backward(self, dout):
+        return dout * self.mask

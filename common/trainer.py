@@ -78,7 +78,7 @@ class RnnlmTrainer:
         batch_t = np.empty((batch_size, time_size), dtype='i')
 
         data_size = len(x)
-        jump = data_size // batch_size
+        jump = data_size // batch_size # data size 300, batch size 2, time 10으로 예시를 들고 생각해보면 쉽게 이해됨
         offsets = [i * jump for i in range(batch_size)]  # 배치에서 각 샘플을 읽기 시작하는 위치
 
         for time in range(time_size):
