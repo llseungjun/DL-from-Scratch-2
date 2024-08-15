@@ -285,30 +285,26 @@ class LSTM:
         Wx, Wh, b = self.params
         N, H = h_prev.shape
 
-        # affine 계산을 우선적으로 처리 후 A에 저장
-        A = np.matmul(x,Wx) + np.matmul(h_prev,Wh) + b
+        A = np.dot(x, Wx) + np.dot(h_prev, Wh) + b
 
-        # A를 H씩 분해
-        f = A[:,:H]
-        g = A[:,H:H*2]
-        i = A[:,H*2:H*3]
-        o = A[:,H*3:]
+        f = A[:, :H]
+        g = A[:, H:2*H]
+        i = A[:, 2*H:3*H]
+        o = A[:, 3*H:]
 
-        # 각 성분에 해당하는 함수 통과
         f = sigmoid(f)
         g = np.tanh(g)
         i = sigmoid(i)
         o = sigmoid(o)
 
-        c_next = c_prev * f + g * i
+        c_next = f * c_prev + g * i
         h_next = o * np.tanh(c_next)
 
-        self.cache = (x, h_prev, c_prev, c_next, f, g, i, o)
-
+        self.cache = (x, h_prev, c_prev, i, f, g, o, c_next)
         return h_next, c_next
 
     def backward(self, dh_next, dc_next):
-        x, h_prev, c_prev, c_next, f, g, i, o = self.cache
+        x, h_prev, c_prev, i, f, g, o, c_next = self.cache
         Wx, Wh, b = self.params
 
         tanh_c_next = np.tanh(c_next)
@@ -349,6 +345,7 @@ class TimeLSTM:
         self.layers = None
         self.h, self.c = None, None # 다음 미니 배치 때 전달할 h,c 
         self.dh = None # seq2seq를 위한 구현
+        self.stateful = stateful
 
     def forward(self, xs):
         """_summary_
@@ -366,16 +363,17 @@ class TimeLSTM:
         self.layers = []
         hs = np.empty((N,T,H),dtype='f')
 
-        if not self.stateful or self.h == None: # self.h 영행렬로 초기화
+        if not self.stateful or self.h is None: # self.h 영행렬로 초기화
             self.h = np.zeros((N,H),dtype='f')
-        if not self.stateful or self.c == None:
-            self.c = np.zeros((H,H), dtype='f')
+        if not self.stateful or self.c is None:
+            self.c = np.zeros((N,H), dtype='f')
 
         # LSTM block 쌓기
         for t in range(T):
             layer = LSTM(*self.params)
-            self.h, self.c = layer.forward(xs[:,t,:],self.h, self.c)
-            hs[:,t,:] = self.h
+            self.h, self.c = layer.forward(xs[:, t, :], self.h, self.c)
+            hs[:, t, :] = self.h
+
             self.layers.append(layer)
         
         return hs
@@ -398,7 +396,7 @@ class TimeLSTM:
             layer = self.layers[t]
             dx, dh, dc = layer.backward(dhs[:,t,:] + dh, dc) # 계산 그래프 상 dh가 2개로 분기하기 때문에 dh를 더해줌
             dxs[:,t,:] = dx
-            for i, grad in enumerate(layer.grad):
+            for i, grad in enumerate(layer.grads):
                 grads[i] += grad
 
         # TimeLSTM 기울기 업데이트
